@@ -1,0 +1,265 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String              @id @default(cuid())
+  email            String              @unique
+  passwordHash     String
+  displayName      String?
+  avatarSvgUrl     String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  projects         Project[]
+  chats            Chat[]
+  memories         Memory[]
+  apiKeys          ApiKey[]
+  notifications    Notification[]
+  githubConnection GitHubConnection?
+  deployments      Deployment[]
+  deviceTokens     DeviceToken[]
+  secrets          IntegrationSecret[]
+
+  @@map("users")
+}
+
+model ApiKey {
+  id           String   @id @default(cuid())
+  userId       String
+  provider     String
+  keyEncrypted String
+  baseUrl      String?
+  model        String
+  isDefault    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider])
+  @@map("api_keys")
+}
+
+model IntegrationSecret {
+  id             String         @id @default(cuid())
+  userId         String
+  category       SecretCategory
+  provider       String
+  encryptedValue String
+  metadata       Json?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, category, provider])
+  @@map("integration_secrets")
+}
+
+enum SecretCategory {
+  DEPLOYMENT
+}
+
+model GitHubConnection {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  githubUserId    String   @unique
+  githubUsername  String
+  githubAvatarUrl String?
+  accessToken     String
+  refreshToken    String?
+  scopes          String[]
+  connectedAt     DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("github_connections")
+}
+
+model Project {
+  id             String         @id @default(cuid())
+  userId         String
+  name           String
+  description    String?
+  techStack      String?
+  type           ProjectType    @default(CREATED)
+  folderPath     String         @unique
+  githubRepoUrl  String?
+  githubRepoName String?
+  githubBranch   String?        @default("main")
+  isPinned       Boolean        @default(false)
+  lastAccessedAt DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chats          Chat[]
+  deployments    Deployment[]
+  previewProcess PreviewProcess?
+  memories       Memory[]
+
+  @@map("projects")
+}
+
+enum ProjectType {
+  CREATED
+  IMPORTED
+}
+
+model Chat {
+  id        String    @id @default(cuid())
+  userId    String
+  projectId String?
+  chatType  ChatType  @default(PLANNING)
+  title     String?
+  isPinned  Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project   Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  messages  Message[]
+
+  @@map("chats")
+}
+
+enum ChatType {
+  PLANNING
+  PROJECT
+  COMBINED
+}
+
+model Message {
+  id          String        @id @default(cuid())
+  chatId      String
+  role        MessageRole
+  content     String
+  tokenCount  Int?
+  liked       Boolean?
+  createdAt   DateTime      @default(now())
+  chat        Chat          @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  fileChanges FileChange[]
+
+  @@map("messages")
+}
+
+enum MessageRole {
+  user
+  assistant
+}
+
+model FileChange {
+  id        String   @id @default(cuid())
+  messageId String
+  projectId String
+  filePath  String
+  operation String
+  createdAt DateTime @default(now())
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@map("file_changes")
+}
+
+model Memory {
+  id         String      @id @default(cuid())
+  userId     String
+  projectId  String?
+  memoryType MemoryType
+  content    String
+  updatedAt  DateTime    @updatedAt
+  createdAt  DateTime    @default(now())
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project    Project?    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, projectId, memoryType])
+  @@map("memories")
+}
+
+enum MemoryType {
+  USER_PROFILE
+  AI_BEHAVIOUR
+  STYLE_PREFERENCES
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  title     String
+  body      String
+  type      NotificationType
+  isRead    Boolean          @default(false)
+  metadata  Json?
+  createdAt DateTime         @default(now())
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+enum NotificationType {
+  SYSTEM
+  UPDATE_AVAILABLE
+  DEPLOY_SUCCESS
+  DEPLOY_FAILED
+  GITHUB_PUSH
+  AI_RESPONSE
+  TIP
+}
+
+model DeviceToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  platform  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("device_tokens")
+}
+
+model Deployment {
+  id           String         @id @default(cuid())
+  userId       String
+  projectId    String
+  provider     DeployProvider
+  status       DeployStatus   @default(PENDING)
+  deployedUrl  String?
+  commitHash   String?
+  buildLog     String[]       @default([])
+  providerMeta Json?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project      Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("deployments")
+}
+
+enum DeployProvider {
+  VERCEL
+  NETLIFY
+  GITHUB_PAGES
+  CUSTOM
+}
+
+enum DeployStatus {
+  PENDING
+  BUILDING
+  SUCCESS
+  FAILED
+}
+
+model PreviewProcess {
+  id          String   @id @default(cuid())
+  projectId   String   @unique
+  containerId String?
+  port        Int
+  status      String   @default("stopped")
+  previewUrl  String?
+  startedAt   DateTime?
+  updatedAt   DateTime @updatedAt
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("preview_processes")
+}
